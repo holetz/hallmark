@@ -1,0 +1,393 @@
+{
+ "jobs": [
+  {
+   "job_id": 101,
+   "settings": {
+    "name": "demo_nightly_load",
+    "schedule": {
+     "quartz_cron_expression": "0 0 2 * * ?",
+     "pause_status": "UNPAUSED"
+    },
+    "tags": {
+     "team": "demo_team"
+    }
+   }
+  },
+  {
+   "job_id": 102,
+   "settings": {
+    "name": "demo_hourly_sync",
+    "schedule": {
+     "quartz_cron_expression": "0 0 * * * ?",
+     "pause_status": "UNPAUSED"
+    },
+    "tags": {
+     "team": "demo_team"
+    }
+   }
+  },
+  {
+   "job_id": 103,
+   "settings": {
+    "name": "demo_report_build",
+    "schedule": null,
+    "tags": {
+     "team": "demo_team"
+    }
+   }
+  }
+ ],
+ "runs": [
+  {
+   "run_id": 9007,
+   "job_id": 101,
+   "run_name": "demo_nightly_load",
+   "state": {
+    "life_cycle_state": "RUNNING",
+    "state_message": ""
+   },
+   "start_time": 1700000500000,
+   "end_time": null,
+   "attempt_number": 0,
+   "trigger": "PERIODIC",
+   "tasks": []
+  },
+  {
+   "run_id": 9006,
+   "job_id": 103,
+   "run_name": "demo_report_build",
+   "state": {
+    "life_cycle_state": "TERMINATED",
+    "state_message": "",
+    "result_state": "CANCELED"
+   },
+   "start_time": 1700000400000,
+   "end_time": 1700000460000,
+   "attempt_number": 0,
+   "trigger": "PERIODIC",
+   "tasks": []
+  },
+  {
+   "run_id": 9005,
+   "job_id": 103,
+   "run_name": "demo_report_build",
+   "state": {
+    "life_cycle_state": "TERMINATED",
+    "state_message": "",
+    "result_state": "SUCCESS"
+   },
+   "start_time": 1700000300000,
+   "end_time": 1700000360000,
+   "attempt_number": 0,
+   "trigger": "PERIODIC",
+   "tasks": []
+  },
+  {
+   "run_id": 9004,
+   "job_id": 102,
+   "run_name": "demo_hourly_sync",
+   "state": {
+    "life_cycle_state": "TERMINATED",
+    "state_message": "Run timed out after 3600 seconds",
+    "result_state": "TIMEDOUT"
+   },
+   "start_time": 1700000250000,
+   "end_time": 1700000310000,
+   "attempt_number": 0,
+   "trigger": "PERIODIC",
+   "tasks": []
+  },
+  {
+   "run_id": 9003,
+   "job_id": 102,
+   "run_name": "demo_hourly_sync",
+   "state": {
+    "life_cycle_state": "TERMINATED",
+    "state_message": "Task transform failed",
+    "result_state": "FAILED"
+   },
+   "start_time": 1700000200000,
+   "end_time": 1700000260000,
+   "attempt_number": 0,
+   "trigger": "PERIODIC",
+   "tasks": [
+    {
+     "task_key": "extract",
+     "run_id": 9103,
+     "state": {
+      "life_cycle_state": "TERMINATED",
+      "result_state": "SUCCESS",
+      "state_message": ""
+     }
+    },
+    {
+     "task_key": "transform",
+     "run_id": 9203,
+     "state": {
+      "life_cycle_state": "TERMINATED",
+      "result_state": "FAILED",
+      "state_message": "Column demo_amount not found"
+     }
+    }
+   ],
+   "repair_history": [
+    {
+     "type": "ORIGINAL",
+     "start_time": 1700000200000,
+     "state": {
+      "result_state": "FAILED"
+     }
+    },
+    {
+     "type": "REPAIR",
+     "start_time": 1700000230000,
+     "state": {
+      "result_state": "SUCCESS"
+     }
+    }
+   ]
+  },
+  {
+   "run_id": 9002,
+   "job_id": 101,
+   "run_name": "demo_nightly_load",
+   "state": {
+    "life_cycle_state": "TERMINATED",
+    "state_message": "",
+    "result_state": "SUCCESS"
+   },
+   "start_time": 1700000150000,
+   "end_time": 1700000210000,
+   "attempt_number": 1,
+   "trigger": "PERIODIC",
+   "tasks": [],
+   "original_attempt_run_id": 9001
+  },
+  {
+   "run_id": 9001,
+   "job_id": 101,
+   "run_name": "demo_nightly_load",
+   "state": {
+    "life_cycle_state": "TERMINATED",
+    "state_message": "Task ingest failed",
+    "result_state": "FAILED"
+   },
+   "start_time": 1700000100000,
+   "end_time": 1700000160000,
+   "attempt_number": 0,
+   "trigger": "PERIODIC",
+   "tasks": [
+    {
+     "task_key": "ingest",
+     "run_id": 9101,
+     "state": {
+      "life_cycle_state": "TERMINATED",
+      "result_state": "FAILED",
+      "state_message": "Source table demo_raw.orders is empty"
+     }
+    }
+   ]
+  },
+  {
+   "run_id": 9008,
+   "job_id": 102,
+   "run_name": "demo_hourly_sync",
+   "state": {
+    "life_cycle_state": "INTERNAL_ERROR",
+    "state_message": "Cluster could not start"
+   },
+   "start_time": 1700000050000,
+   "end_time": 1700000110000,
+   "attempt_number": 0,
+   "trigger": "PERIODIC",
+   "tasks": []
+  }
+ ],
+ "outputs": {
+  "9001": {
+   "error": "Source table demo_raw.orders is empty",
+   "error_trace": "Traceback demo xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  },
+  "9003": {
+   "error": "Column demo_amount not found"
+  }
+ },
+ "pipelines": [
+  {
+   "pipeline_id": "pipe-orders",
+   "name": "demo_orders_pipeline",
+   "state": "IDLE",
+   "health": "UNHEALTHY",
+   "latest_updates": [
+    {
+     "update_id": "u2",
+     "state": "COMPLETED",
+     "creation_time": "2023-11-14T22:30:00Z"
+    },
+    {
+     "update_id": "u1",
+     "state": "FAILED",
+     "creation_time": "2023-11-13T22:30:00Z"
+    }
+   ]
+  },
+  {
+   "pipeline_id": "pipe-events",
+   "name": "demo_events_pipeline",
+   "state": "RUNNING",
+   "health": "HEALTHY",
+   "latest_updates": []
+  }
+ ],
+ "updates": {
+  "pipe-orders": [
+   {
+    "update_id": "u2",
+    "state": "COMPLETED",
+    "creation_time": "2023-11-14T22:30:00Z",
+    "cause": "JOB_TASK"
+   },
+   {
+    "update_id": "u1",
+    "state": "FAILED",
+    "creation_time": "2023-11-13T22:30:00Z",
+    "cause": "JOB_TASK"
+   }
+  ]
+ },
+ "events": {
+  "pipe-orders": [
+   {
+    "id": "e5",
+    "event_type": "flow_progress",
+    "level": "INFO",
+    "message": "Flow completed",
+    "timestamp": 1700000000009,
+    "origin": {
+     "flow_name": "demo_orders",
+     "update_id": "u2"
+    },
+    "details": {
+     "flow_progress": {
+      "status": "COMPLETED",
+      "data_quality": {
+       "expectations": [
+        {
+         "name": "valid_amount",
+         "dataset": "demo_main.sales.orders",
+         "passed_records": 990,
+         "failed_records": 10
+        },
+        {
+         "name": "has_id",
+         "dataset": "demo_main.sales.orders",
+         "passed_records": 1000,
+         "failed_records": 0
+        }
+       ]
+      }
+     }
+    }
+   },
+   {
+    "id": "e4",
+    "event_type": "update_progress",
+    "level": "ERROR",
+    "message": "Update u1 failed: expectation violated",
+    "timestamp": 1700000000008,
+    "origin": {
+     "flow_name": null,
+     "update_id": "u2"
+    }
+   },
+   {
+    "id": "e3",
+    "event_type": "flow_progress",
+    "level": "INFO",
+    "message": "Flow completed",
+    "timestamp": 1700000000007,
+    "origin": {
+     "flow_name": "demo_customers",
+     "update_id": "u2"
+    },
+    "details": {
+     "flow_progress": {
+      "status": "COMPLETED",
+      "data_quality": {
+       "expectations": [
+        {
+         "name": "has_email_shape",
+         "dataset": "demo_main.sales.customers",
+         "passed_records": 500,
+         "failed_records": 0
+        }
+       ]
+      }
+     }
+    }
+   },
+   {
+    "id": "e2",
+    "event_type": "flow_progress",
+    "level": "INFO",
+    "message": "Flow completed",
+    "timestamp": 1700000000006,
+    "origin": {
+     "flow_name": "demo_orders",
+     "update_id": "u1"
+    },
+    "details": {
+     "flow_progress": {
+      "status": "COMPLETED",
+      "data_quality": {
+       "expectations": [
+        {
+         "name": "valid_amount",
+         "dataset": "demo_main.sales.orders",
+         "passed_records": 95,
+         "failed_records": 5
+        }
+       ]
+      }
+     }
+    }
+   },
+   {
+    "id": "e1",
+    "event_type": "flow_progress",
+    "level": "INFO",
+    "message": "Flow started",
+    "timestamp": 1700000000005,
+    "origin": {
+     "flow_name": "demo_orders",
+     "update_id": "u2"
+    }
+   }
+  ]
+ },
+ "alerts": [
+  {
+   "id": "al1",
+   "display_name": "demo_orders freshness",
+   "state": "TRIGGERED",
+   "lifecycle_state": "ACTIVE",
+   "update_time": "2023-11-14T22:40:00Z",
+   "owner_user_name": "demo.owner"
+  },
+  {
+   "id": "al2",
+   "display_name": "demo_customers row count",
+   "state": "OK",
+   "lifecycle_state": "ACTIVE",
+   "update_time": "2023-11-14T20:00:00Z"
+  },
+  {
+   "id": "al3",
+   "display_name": "demo_orders nulls",
+   "state": "UNKNOWN",
+   "lifecycle_state": "ACTIVE",
+   "update_time": "2023-11-14T21:00:00Z"
+  }
+ ],
+ "now_ms": 1700000600000
+}
