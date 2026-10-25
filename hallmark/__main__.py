@@ -1,8 +1,9 @@
-"""Command line: `python3 -m hallmark refresh|serve|models-serve`.
+"""Command line: `python3 -m hallmark refresh|serve|models-serve|ops-serve`.
 
 refresh  builds or updates the index from a snapshot file or Unity Catalog, then links source code.
 serve    answers MCP requests on stdio from the index, read-only, and never imports a connector.
 models-serve  answers MCP requests on stdio live from MLflow (HALLMARK_MLFLOW_HOST), read-only.
+ops-serve  answers MCP requests on stdio live from Databricks jobs and pipelines, read-only.
 """
 import argparse
 import json
@@ -28,6 +29,7 @@ def _parser():
     serve = sub.add_parser("serve", help="serve MCP over stdio")
     serve.add_argument("--db", default=db_default)
     sub.add_parser("models-serve", help="serve MLflow models, runs and drift over MCP stdio")
+    sub.add_parser("ops-serve", help="serve Databricks jobs, failures and data quality over MCP stdio")
     return parser
 
 
@@ -52,6 +54,16 @@ def main(argv=None, out=None):
             print(f"hallmark: {exc}", file=sys.stderr)
             return 2
         models_mcp.serve(client)
+        return 0
+    if args.command == "ops-serve":
+        from . import databricks_client, ops_mcp
+
+        try:
+            client = databricks_client.DatabricksClient()
+        except databricks_client.DatabricksError as exc:
+            print(f"hallmark: {exc}", file=sys.stderr)
+            return 2
+        ops_mcp.serve(client)
         return 0
     from . import codelinks, mcp, store
 
