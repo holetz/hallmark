@@ -1,0 +1,17 @@
+{
+  "registered_models": [
+    {
+      "name": "churn_model", "catalog_name": "demo_catalog", "schema_name": "ml",
+      "full_name": "demo_catalog.ml.churn_model", "comment": "Predicts customer churn",
+      "updated_at": 1767866400000
+    }
+  ],
+  "versions": {
+    "demo_catalog.ml.churn_model": {
+      "model_versions": [
+        {"version": 1, "status": "READY", "comment": "baseline"},
+        {"version": 2, "status": "READY", "comment": "adds revenue features"}
+      ]
+    }
+  }
+}

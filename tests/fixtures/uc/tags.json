@@ -1,0 +1,9 @@
+{
+  "table_tags": [
+    {"catalog_name": "demo_catalog", "schema_name": "sales", "table_name": "orders", "tag_name": "domain", "tag_value": "sales"},
+    {"catalog_name": "demo_catalog", "schema_name": "sales", "table_name": "customers", "tag_name": "pii", "tag_value": "true"}
+  ],
+  "column_tags": [
+    {"catalog_name": "demo_catalog", "schema_name": "sales", "table_name": "orders", "column_name": "order_total", "tag_name": "sensitivity", "tag_value": "financial"}
+  ]
+}

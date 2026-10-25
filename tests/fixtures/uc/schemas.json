@@ -1,0 +1,5 @@
+{"schemas": [
+  {"name": "sales", "catalog_name": "demo_catalog", "full_name": "demo_catalog.sales"},
+  {"name": "ml", "catalog_name": "demo_catalog", "full_name": "demo_catalog.ml"},
+  {"name": "information_schema", "catalog_name": "demo_catalog", "full_name": "demo_catalog.information_schema"}
+]}
