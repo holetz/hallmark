@@ -29,6 +29,27 @@ MCP tools: `search`, `get_table`, `get_column`, `code_links`, `lineage`, `models
 tools take `limit` (default 10, capped at 50) and report `truncated`. Code references of kind `bare`
 are candidates, not proofs.
 
+### Models server (MLflow)
+
+```bash
+export HALLMARK_MLFLOW_HOST=https://mlflow.example.invalid HALLMARK_MLFLOW_TOKEN=...
+python3 -m hallmark models-serve
+```
+
+A second MCP server over stdio, live from the MLflow REST API (registry, experiments, runs), with no
+local index because metrics change after every run. It is read-only: the client only issues GETs and
+the two search POSTs, and no tool writes, promotes or trains. `HALLMARK_MLFLOW_HOST` is required
+(exit 2 when unset); `HALLMARK_MLFLOW_TOKEN` is optional.
+
+MCP tools: `list_models`, `get_model`, `list_experiments`, `list_runs`, `get_run`, `metric_history`,
+`performance`, `drift`. List tools take `limit` (default 10, capped at 50) and report `truncated`.
+A version defaults to the `champion` alias, else the highest.
+
+Drift convention (an assumption, to confirm against a real monitoring job): a metric whose key
+contains `drift`, `psi` or `ks_stat` (case-insensitive) is a drift metric. Its threshold is the run
+param `<key>.threshold`, else the call's `threshold` (default 0.2). A value above the threshold is
+an alert, `high` at twice the threshold or more, else `medium`. Proven on synthetic fixtures only.
+
 ## Design notes
 
 - The connector contract is a plain snapshot dict (`hallmark/snapshot.py`); the Unity Catalog
