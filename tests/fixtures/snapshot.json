@@ -1,0 +1,55 @@
+{
+  "tables": [
+    {
+      "fqn": "demo_catalog.sales.orders",
+      "comment": "One row per customer order",
+      "last_altered": "2026-01-10T08:00:00",
+      "tags": {"domain": "sales"},
+      "columns": [
+        {"name": "order_id", "type": "bigint", "comment": "Order identifier"},
+        {"name": "customer_id", "type": "bigint", "comment": "Buyer identifier"},
+        {"name": "order_total", "type": "decimal(12,2)", "comment": "Gross amount charged", "tags": {"sensitivity": "financial"}},
+        {"name": "ordered_at", "type": "timestamp", "comment": "When the order was placed"}
+      ]
+    },
+    {
+      "fqn": "demo_catalog.sales.daily_revenue",
+      "comment": "Revenue aggregated per day",
+      "last_altered": "2026-01-10T09:00:00",
+      "columns": [
+        {"name": "revenue_day", "type": "date", "comment": "Calendar day"},
+        {"name": "revenue_total", "type": "decimal(14,2)", "comment": "Sum of gross amounts"}
+      ]
+    },
+    {
+      "fqn": "demo_catalog.crm.customers",
+      "comment": "Customer master data",
+      "last_altered": "2026-01-09T07:00:00",
+      "tags": {"domain": "crm", "pii": "true"},
+      "columns": [
+        {"name": "customer_id", "type": "bigint", "comment": "Buyer identifier"},
+        {"name": "full_name", "type": "string", "comment": "Display name of the buyer", "tags": {"pii": "true"}},
+        {"name": "segment", "type": "string", "comment": "Marketing segment label"}
+      ]
+    }
+  ],
+  "models": [
+    {
+      "fqn": "demo_catalog.ml.churn_model",
+      "comment": "Predicts customer churn",
+      "last_altered": "2026-01-08T10:00:00",
+      "versions": [
+        {"version": "1", "status": "READY", "comment": "baseline"},
+        {"version": "2", "status": "READY", "comment": "adds revenue features"}
+      ]
+    }
+  ],
+  "features": [
+    {"fqn": "demo_catalog.ml.customer_features", "table_fqn": "demo_catalog.crm.customers", "columns": ["segment"]}
+  ],
+  "lineage": [
+    {"kind": "table", "src": "demo_catalog.sales.orders", "dst": "demo_catalog.sales.daily_revenue"},
+    {"kind": "column", "src": "demo_catalog.sales.orders.order_total", "dst": "demo_catalog.sales.daily_revenue.revenue_total"},
+    {"kind": "table", "src": "demo_catalog.crm.customers", "dst": "demo_catalog.sales.orders"}
+  ]
+}
