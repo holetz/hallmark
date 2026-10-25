@@ -1,7 +1,8 @@
-"""Command line: `python3 -m hallmark refresh|serve`.
+"""Command line: `python3 -m hallmark refresh|serve|models-serve`.
 
 refresh  builds or updates the index from a snapshot file or Unity Catalog, then links source code.
 serve    answers MCP requests on stdio from the index, read-only, and never imports a connector.
+models-serve  answers MCP requests on stdio live from MLflow (HALLMARK_MLFLOW_HOST), read-only.
 """
 import argparse
 import json
@@ -26,6 +27,7 @@ def _parser():
     refresh.add_argument("--src", help="source tree to link to tables and columns")
     serve = sub.add_parser("serve", help="serve MCP over stdio")
     serve.add_argument("--db", default=db_default)
+    sub.add_parser("models-serve", help="serve MLflow models, runs and drift over MCP stdio")
     return parser
 
 
@@ -41,6 +43,16 @@ def _snapshot(args):
 def main(argv=None, out=None):
     out = out or sys.stdout
     args = _parser().parse_args(argv)
+    if args.command == "models-serve":
+        from . import mlflow_client, models_mcp
+
+        try:
+            client = mlflow_client.MlflowClient()
+        except mlflow_client.MlflowError as exc:
+            print(f"hallmark: {exc}", file=sys.stderr)
+            return 2
+        models_mcp.serve(client)
+        return 0
     from . import codelinks, mcp, store
 
     if args.command == "serve":
