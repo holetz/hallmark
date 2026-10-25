@@ -298,14 +298,7 @@ TOOLS = {
 
 
 def _call(client, params):
-    name, args = params.get("name"), params.get("arguments") or {}
-    if name not in TOOLS or not isinstance(args, dict):
-        return None
-    try:
-        body = TOOLS[name][0](client, args)
-        return {"content": [{"type": "text", "text": json.dumps(body, ensure_ascii=False)}]}
-    except (ValueError, LookupError, DatabricksError) as exc:
-        return {"isError": True, "content": [{"type": "text", "text": str(exc.args[0])}]}
+    return mcp.call_tool(TOOLS, client, params, (ValueError, LookupError, DatabricksError))
 
 
 def handle(client, message):
@@ -337,10 +330,7 @@ def serve(client, stdin=None, stdout=None):
     for line in stdin:
         if not line.strip():
             continue
-        try:
-            response = handle(client, json.loads(line))
-        except json.JSONDecodeError:
-            response = _error(None, -32700, "parse error")
+        response = mcp.respond(handle, client, line)
         if response is not None:
             stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
             stdout.flush()

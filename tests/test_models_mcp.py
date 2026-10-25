@@ -46,6 +46,15 @@ class ProtocolTest(unittest.TestCase):
         for forbidden in ("promote", "transition", "delete", "train", "register"):
             self.assertFalse(any(forbidden in t["name"] for t in tools))
 
+    def test_wrong_argument_types_are_tool_errors_and_the_next_call_works(self):
+        for tool, args in (("list_models", {"name_filter": 5}), ("list_experiments", {"name_filter": []}),
+                           ("get_model", {"name": 3})):
+            err, text = call(self.client, tool, **args)
+            self.assertTrue(err, tool)
+        for params in ([1], "x", {"name": "list_models", "arguments": "a"}):
+            self.assertEqual(self.rpc("tools/call", params)["error"]["code"], -32602)
+        self.assertFalse(call(self.client, "list_models")[0])
+
     def test_errors(self):
         self.assertEqual(self.rpc("nope")["error"]["code"], -32601)
         self.assertEqual(self.rpc("tools/call", {"name": "nope"})["error"]["code"], -32602)

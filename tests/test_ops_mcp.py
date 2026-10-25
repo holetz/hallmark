@@ -57,6 +57,16 @@ class ProtocolTest(unittest.TestCase):
         self.assertEqual(self.rpc("tools/call", {"name": "run_now"})["error"]["code"], -32602)
         self.assertEqual(ops_mcp.handle(self.client, {"id": 1})["error"]["code"], -32600)
 
+    def test_wrong_argument_types_are_tool_errors_and_the_next_call_works(self):
+        for tool, args in (("list_jobs", {"name_filter": 5}), ("alerts", {"name_filter": ["a"]}),
+                           ("list_pipelines", {"name_filter": {}}), ("data_quality", {"pipeline_id": 1}),
+                           ("job_status", {"job_id": 101, "limit": "3"})):
+            err, text = call(self.client, tool, **args)
+            self.assertTrue(err, tool)
+        for params in ([1], "x", {"name": "list_jobs", "arguments": "a"}):
+            self.assertEqual(self.rpc("tools/call", params)["error"]["code"], -32602)
+        self.assertFalse(call(self.client, "list_jobs")[0])
+
     def test_serve_answers_lines_and_reports_parse_errors(self):
         out = io.StringIO()
         ops_mcp.serve(self.client, io.StringIO('{"jsonrpc":"2.0","id":1,"method":"ping"}\n\nnot json\n'), out)

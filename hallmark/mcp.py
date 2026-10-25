@@ -162,15 +162,63 @@ def _error(id_, code, message):
     return {"jsonrpc": "2.0", "id": id_, "error": {"code": code, "message": message}}
 
 
-def _call(conn, params):
-    name, args = params.get("name"), params.get("arguments") or {}
-    if name not in TOOLS or not isinstance(args, dict):
+_TYPES = {"string": str, "integer": int, "number": (int, float), "boolean": bool, "object": dict,
+          "array": list}
+
+
+def check_args(args, schema):
+    """Raise ValueError naming the first argument whose type or enum value breaks the schema."""
+    for key, spec in schema.get("properties", {}).items():
+        if key not in args:
+            continue
+        value, declared = args[key], spec.get("type")
+        if declared is not None:
+            names = declared if isinstance(declared, list) else [declared]
+            if not any(isinstance(value, _TYPES[n]) and not (isinstance(value, bool) and n != "boolean")
+                       for n in names):
+                raise ValueError(f"'{key}' must be of type {' or '.join(names)}")
+        if "enum" in spec and value not in spec["enum"]:
+            raise ValueError(f"'{key}' must be one of {', '.join(map(str, spec['enum']))}")
+
+
+def call_tool(tools, target, params, expected=(ValueError, LookupError)):
+    """Run one tools/call; None when the tool or arguments are unknown (the caller answers -32602).
+
+    `expected` exceptions are tool errors carrying their own text. Any other exception becomes a
+    fixed error, so one bad call never ends the server and no unexpected text reaches the caller.
+    """
+    if not isinstance(params, dict):
+        return None
+    name, args = params.get("name"), params.get("arguments")
+    args = {} if args is None else args
+    if not isinstance(name, str) or name not in tools or not isinstance(args, dict):
         return None
     try:
-        body = TOOLS[name][0](conn, args)
+        check_args(args, tools[name][2])
+        body = tools[name][0](target, args)
         return {"content": [{"type": "text", "text": json.dumps(body, ensure_ascii=False)}]}
-    except (ValueError, LookupError) as exc:
-        return {"isError": True, "content": [{"type": "text", "text": str(exc.args[0])}]}
+    except expected as exc:
+        text = str(exc.args[0]) if exc.args else type(exc).__name__
+    except Exception:  # noqa: BLE001 - the server must survive any single call
+        text = f"internal error in tool {name}"
+    return {"isError": True, "content": [{"type": "text", "text": text}]}
+
+
+def respond(handler, target, line):
+    """Answer one input line: a parse error or an internal error is a response, never a crash."""
+    try:
+        message = json.loads(line)
+    except json.JSONDecodeError:
+        return _error(None, -32700, "parse error")
+    try:
+        return handler(target, message)
+    except Exception:  # noqa: BLE001
+        return _error(message.get("id") if isinstance(message, dict) else None, -32603,
+                      "internal error")
+
+
+def _call(conn, params):
+    return call_tool(TOOLS, conn, params)
 
 
 def handle(conn, message):
@@ -203,10 +251,7 @@ def serve(db_path, stdin=None, stdout=None):
     for line in stdin:
         if not line.strip():
             continue
-        try:
-            response = handle(conn, json.loads(line))
-        except json.JSONDecodeError:
-            response = _error(None, -32700, "parse error")
+        response = respond(handle, conn, line)
         if response is not None:
             stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
             stdout.flush()
