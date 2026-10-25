@@ -1,0 +1,106 @@
+import io
+import inspect
+import json
+import os
+import unittest
+from unittest import mock
+
+import _dbx_stub as stub
+from hallmark import databricks_client as dc
+
+
+class FakeResponse(io.BytesIO):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def opener_for(seen):
+    def opener(req, timeout=None):
+        seen.append(req)
+        if req.full_url.endswith("/api/2.1/jobs/get?job_id=boom"):
+            raise OSError("secret-host refused")
+        return FakeResponse(json.dumps({"ok": True}).encode())
+    return opener
+
+
+class AllowlistTest(unittest.TestCase):
+    def setUp(self):
+        self.seen = []
+        self.client = dc.DatabricksClient("https://dbx.example.invalid", "tok", opener_for(self.seen))
+
+    def test_write_shaped_paths_are_refused_before_any_request(self):
+        for path in ("/api/2.1/jobs/run-now", "/api/2.1/jobs/runs/cancel", "/api/2.1/jobs/runs/repair",
+                     "/api/2.1/jobs/runs/submit", "/api/2.1/jobs/create", "/api/2.1/jobs/delete",
+                     "/api/2.1/jobs/reset", "/api/2.1/jobs/update", "/api/2.0/pipelines/pipe-orders/stop",
+                     "/api/2.0/pipelines/pipe-orders/updates/start", "/api/2.0/pipelines/a/../b/stop",
+                     "/api/2.0/sql/alerts/al1/delete", "/api/2.1/jobs/list/../delete",
+                     "/api/2.1/jobs/list?x=1", "/api/2.0/other/thing"):
+            with self.assertRaises(dc.ReadOnlyError, msg=path):
+                self.client.get(path)
+        self.assertEqual(self.seen, [])
+
+    def test_the_client_has_no_method_that_sends_a_body(self):
+        public = [n for n, _ in inspect.getmembers(dc.DatabricksClient, inspect.isfunction)
+                  if not n.startswith("_")]
+        self.assertEqual(public, ["get"])
+        self.assertNotIn("data=", inspect.getsource(dc.DatabricksClient))
+
+    def test_allowed_reads_are_sent_as_get_with_bearer(self):
+        self.client.get("/api/2.1/jobs/runs/get", {"run_id": "9001"})
+        self.client.get("/api/2.0/pipelines/pipe-orders/events")
+        self.assertEqual([r.get_method() for r in self.seen], ["GET", "GET"])
+        self.assertEqual(self.seen[0].get_header("Authorization"), "Bearer tok")
+        self.assertTrue(self.seen[0].full_url.endswith("/runs/get?run_id=9001"))
+
+    def test_error_does_not_leak_host_or_token(self):
+        with self.assertRaises(dc.DatabricksError) as ctx:
+            self.client.get("/api/2.1/jobs/get", {"job_id": "boom"})
+        self.assertNotIn("secret-host", str(ctx.exception))
+        self.assertNotIn("tok", str(ctx.exception))
+
+    def test_missing_host_and_token_are_named(self):
+        with mock.patch.dict(os.environ, {}, clear=True), \
+                self.assertRaisesRegex(dc.DatabricksError, "HALLMARK_DBX_HOST"):
+            dc.DatabricksClient()
+        with mock.patch.dict(os.environ, {"HALLMARK_DBX_HOST": "https://dbx.example.invalid"}, clear=True), \
+                self.assertRaisesRegex(dc.DatabricksError, "HALLMARK_DBX_TOKEN"):
+            dc.DatabricksClient()
+
+
+class PagesTest(unittest.TestCase):
+    def test_pagination_follows_the_token(self):
+        client = stub.StubClient()
+        ids = [j["job_id"] for j in dc.pages(client, "/api/2.1/jobs/list", "jobs", size_key="limit",
+                                             params={"limit": 2})]
+        self.assertEqual(ids, [101, 102, 103])
+        self.assertEqual([c[1].get("page_token") for c in client.calls], [None, "2"])
+
+
+class LocalServerTest(unittest.TestCase):
+    """The production urllib path against a fixture served on 127.0.0.1."""
+
+    def test_client_over_http_matches_the_stub_and_only_gets(self):
+        server, url = stub.serve_http()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        client = dc.DatabricksClient(url, "tok")
+        over_http = list(dc.pages(client, "/api/2.1/jobs/runs/list", "runs", {"job_id": "101", "limit": 2}))
+        direct = list(dc.pages(stub.StubClient(), "/api/2.1/jobs/runs/list", "runs", {"job_id": "101"}))
+        self.assertEqual(over_http, direct)
+        self.assertEqual(len(direct), 3)
+        self.assertEqual({m for m, _, _ in server.seen}, {"GET"})
+        self.assertEqual(server.seen[0][2], "Bearer tok")
+
+    def test_missing_resource_is_an_error(self):
+        server, url = stub.serve_http()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        with self.assertRaises(dc.DatabricksError):
+            dc.DatabricksClient(url, "tok").get("/api/2.1/jobs/runs/get", {"run_id": "nope"})
+
+
+if __name__ == "__main__":
+    unittest.main()
