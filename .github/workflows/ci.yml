@@ -1,0 +1,42 @@
+name: CI
+
+# Runs once per commit: on pushes to main and on pull requests. The `quenching` specs-store branch
+# is a data branch, never code, and triggers nothing.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches-ignore: [quenching]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: Repository gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Run repository gate (generic leak patterns, shell syntax)
+        run: bash scripts/verify_repo.sh
+
+  gitleaks:
+    name: Gitleaks
+    runs-on: ubuntu-latest
+    # The action lists a pull request's commits through the API.
+    permissions:
+      contents: read
+      pull-requests: read
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

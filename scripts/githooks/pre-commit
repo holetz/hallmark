@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# pre-commit: refuse a commit whose staged content or author email leaks.
+# Install: git config core.hooksPath scripts/githooks (see CONTRIBUTING.md).
+# Needs the quenching plugin's `cq` on PATH and fails closed without it.
+set -Eeuo pipefail
+ROOT="$(git rev-parse --show-toplevel)"
+if ! command -v cq >/dev/null 2>&1; then
+  echo "pre-commit: 'cq' (quenching plugin) not on PATH; refusing. See CONTRIBUTING.md." >&2
+  exit 1
+fi
+exec cq security leak --staged --root "$ROOT"

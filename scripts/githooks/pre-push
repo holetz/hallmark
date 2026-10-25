@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# pre-push: refuse a push whose commits (added lines, messages, author and committer emails) leak.
+# Git passes the refs being pushed on stdin; `cq security leak --pre-push` reads them there.
+# Needs the quenching plugin's `cq` on PATH and fails closed without it.
+set -Eeuo pipefail
+ROOT="$(git rev-parse --show-toplevel)"
+if ! command -v cq >/dev/null 2>&1; then
+  echo "pre-push: 'cq' (quenching plugin) not on PATH; refusing. See CONTRIBUTING.md." >&2
+  exit 1
+fi
+exec cq security leak --pre-push --remote "${1:-}" --root "$ROOT"
