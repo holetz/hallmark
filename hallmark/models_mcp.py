@@ -6,7 +6,7 @@ change after every run. The client can only read (see `mlflow_client`); this mod
 that writes, promotes or trains. Every list takes a `limit` capped at MAX_LIMIT and reports
 `truncated`.
 
-Drift convention (assumption, confirmed against a real monitoring job): a metric is a drift metric
+Drift convention (assumption, to confirm against a real workspace): a metric is a drift metric
 when its key contains one of DRIFT_MARKERS (case-insensitive). Its threshold is the run param
 `<key>.threshold`, else the call's `threshold` (default DEFAULT_THRESHOLD). A value above the
 threshold is an alert, `high` at twice the threshold or more, else `medium`.

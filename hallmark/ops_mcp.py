@@ -6,7 +6,7 @@ allowlist (see `databricks_client`); this module has no tool that runs, reruns, 
 changes anything: "reruns" reads the retries and repairs that already happened. Every list takes a
 `limit` capped at MAX_LIMIT and reports `truncated`; error text is cut to TEXT_CAP characters.
 
-Conventions (assumptions, confirmed against a real workspace):
+Conventions (assumption, to confirm against a real workspace):
   failure       result_state FAILED or TIMEDOUT, or life_cycle_state INTERNAL_ERROR; CANCELED is
                 counted apart.
   rerun         a retry (a run whose original_attempt_run_id is the failed run) or a REPAIR entry in
