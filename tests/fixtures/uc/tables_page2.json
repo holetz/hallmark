@@ -1,0 +1,13 @@
+{
+  "tables": [
+    {
+      "name": "daily_revenue", "catalog_name": "demo_catalog", "schema_name": "sales",
+      "full_name": "demo_catalog.sales.daily_revenue", "table_type": "MANAGED",
+      "comment": "Revenue aggregated per day", "updated_at": 1768035600000,
+      "columns": [
+        {"name": "revenue_day", "type_text": "date", "position": 0, "comment": "Calendar day"},
+        {"name": "revenue_total", "type_text": "decimal(14,2)", "position": 1, "comment": "Sum of gross amounts"}
+      ]
+    }
+  ]
+}

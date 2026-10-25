@@ -1,0 +1,26 @@
+{
+  "tables": [
+    {
+      "name": "orders", "catalog_name": "demo_catalog", "schema_name": "sales",
+      "full_name": "demo_catalog.sales.orders", "table_type": "MANAGED",
+      "comment": "One row per customer order", "updated_at": 1768032000000,
+      "properties": {"owner_team": "acme_sales"},
+      "columns": [
+        {"name": "order_id", "type_text": "bigint", "position": 0, "comment": "Order identifier"},
+        {"name": "customer_id", "type_text": "bigint", "position": 1, "comment": "Buyer identifier"},
+        {"name": "order_total", "type_text": "decimal(12,2)", "position": 2, "comment": "Gross amount charged"}
+      ]
+    },
+    {
+      "name": "customers", "catalog_name": "demo_catalog", "schema_name": "sales",
+      "full_name": "demo_catalog.sales.customers", "table_type": "MANAGED",
+      "comment": "Customer master data", "updated_at": 1767945600000,
+      "properties": {"feature_table": "true"},
+      "columns": [
+        {"name": "customer_id", "type_text": "bigint", "position": 0, "comment": "Buyer identifier"},
+        {"name": "segment", "type_text": "string", "position": 1, "comment": "Marketing segment label"}
+      ]
+    }
+  ],
+  "next_page_token": "page2-token"
+}

@@ -1,0 +1,11 @@
+{
+  "table_lineage": [
+    {"source_table_full_name": "demo_catalog.sales.orders", "target_table_full_name": "demo_catalog.sales.daily_revenue"},
+    {"source_table_full_name": "demo_catalog.sales.customers", "target_table_full_name": "demo_catalog.sales.orders"},
+    {"source_table_full_name": null, "target_table_full_name": "demo_catalog.sales.orders"}
+  ],
+  "column_lineage": [
+    {"source_table_full_name": "demo_catalog.sales.orders", "source_column_name": "order_total",
+     "target_table_full_name": "demo_catalog.sales.daily_revenue", "target_column_name": "revenue_total"}
+  ]
+}

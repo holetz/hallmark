@@ -12,5 +12,6 @@ if command -v cq >/dev/null 2>&1; then
 else
   echo "==> leak gate behaviour: skipped (cq not on PATH; the hooks need it)"
 fi
+step "unit tests" env PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests
 step "leak gate (generic patterns)" bash scripts/leak-generic.sh
 echo "verify_repo: green"
