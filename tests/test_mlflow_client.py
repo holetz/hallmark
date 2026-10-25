@@ -25,6 +25,29 @@ def opener_for(seen):
     return opener
 
 
+class HostTest(unittest.TestCase):
+    def test_a_scheme_less_host_gets_https(self):
+        seen = []
+        client = mc.MlflowClient("mlflow.example.invalid", "tok", opener_for(seen))
+        client.get(f"{mc.API}/registered-models/search")
+        self.assertEqual(seen[0].full_url,
+                         f"https://mlflow.example.invalid{mc.API}/registered-models/search")
+
+    def test_a_host_that_is_not_https_is_refused_without_echoing_it(self):
+        for bad in ("http://secret-host.example.invalid", "ftp://secret-host.example.invalid"):
+            with self.assertRaises(mc.MlflowError) as ctx:
+                mc.MlflowClient(bad, "tok")
+            self.assertNotIn("secret-host", str(ctx.exception))
+            self.assertIn("HALLMARK_MLFLOW_HOST", str(ctx.exception))
+
+    def test_a_request_that_cannot_be_built_is_a_fixed_error(self):
+        client = mc.MlflowClient("https://mlflow.example.invalid", "tok", opener_for([]))
+        client.host = "secret-host.example.invalid"
+        with self.assertRaises(mc.MlflowError) as ctx:
+            client.get(f"{mc.API}/registered-models/search")
+        self.assertNotIn("secret-host", str(ctx.exception))
+
+
 class AllowlistTest(unittest.TestCase):
     def setUp(self):
         self.seen = []

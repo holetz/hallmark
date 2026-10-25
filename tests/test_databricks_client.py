@@ -70,6 +70,30 @@ class AllowlistTest(unittest.TestCase):
             dc.DatabricksClient()
 
 
+class HostTest(unittest.TestCase):
+    def test_a_scheme_less_host_gets_https_and_sends_a_request(self):
+        seen = []
+        client = dc.DatabricksClient("adb-x.example.invalid/", "tok", opener_for(seen))
+        client.get("/api/2.1/jobs/list")
+        self.assertEqual(client.host, "https://adb-x.example.invalid")
+        self.assertEqual(seen[0].full_url, "https://adb-x.example.invalid/api/2.1/jobs/list")
+
+    def test_a_host_that_is_not_https_is_refused_without_echoing_it(self):
+        for bad in ("http://secret-host.example.invalid", "ftp://secret-host.example.invalid",
+                    "https://user:pw@secret-host.example.invalid", "https://", "https://h:notaport"):
+            with self.assertRaises(dc.DatabricksError, msg=bad) as ctx:
+                dc.DatabricksClient(bad, "tok")
+            self.assertNotIn("secret-host", str(ctx.exception))
+            self.assertIn("HALLMARK_DBX_HOST", str(ctx.exception))
+
+    def test_a_request_that_cannot_be_built_is_a_fixed_error(self):
+        client = dc.DatabricksClient("https://dbx.example.invalid", "tok", opener_for([]))
+        client.host = "secret-host.example.invalid"
+        with self.assertRaises(dc.DatabricksError) as ctx:
+            client.get("/api/2.1/jobs/list")
+        self.assertNotIn("secret-host", str(ctx.exception))
+
+
 class PagesTest(unittest.TestCase):
     def test_pagination_follows_the_token(self):
         client = stub.StubClient()
