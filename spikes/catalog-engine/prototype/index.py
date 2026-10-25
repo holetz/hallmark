@@ -6,8 +6,12 @@ loader below is the synthetic one. Nothing here talks to a workspace.
 import argparse
 import json
 import os
+import random
 import re
+import resource
 import sqlite3
+import tempfile
+import time
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS tables (fqn TEXT PRIMARY KEY, comment TEXT, last_altered TEXT);
@@ -37,10 +41,11 @@ def connect(path):
     return conn
 
 
-def _write_table(conn, table):
+def _write_table(conn, table, existed):
     fqn = table["fqn"]
-    conn.execute("DELETE FROM columns WHERE table_fqn = ?", (fqn,))
-    conn.execute("DELETE FROM search WHERE fqn = ? OR fqn LIKE ?", (fqn, fqn + ".%"))
+    if existed:
+        conn.execute("DELETE FROM columns WHERE table_fqn = ?", (fqn,))
+        conn.execute("DELETE FROM search WHERE fqn = ? OR fqn LIKE ?", (fqn, fqn + ".%"))
     conn.execute(
         "INSERT OR REPLACE INTO tables VALUES (?, ?, ?)",
         (fqn, table.get("comment"), table["last_altered"]),
@@ -73,7 +78,7 @@ def refresh(conn, snapshot):
         for table in snapshot["tables"]:
             seen.add(table["fqn"])
             if stored.get(table["fqn"]) != table["last_altered"]:
-                _write_table(conn, table)
+                _write_table(conn, table, table["fqn"] in stored)
                 rewritten += 1
         dropped = set(stored) - seen
         for fqn in dropped:
@@ -148,15 +153,61 @@ def stats(conn):
     return {n: conn.execute(f"SELECT COUNT(*) FROM {n}").fetchone()[0] for n in names}
 
 
+def synthetic_snapshot(tables, columns_per_table, version=0, seed=7):
+    rng = random.Random(seed)
+    words = ["amount", "status", "created", "owner", "region", "score", "flag", "code"]
+    out = []
+    for t in range(tables):
+        fqn = f"demo_catalog.s{t % 20}.t{t}"
+        cols = [
+            {
+                "name": f"c{c}_{rng.choice(words)}",
+                "type": "string",
+                "comment": f"{rng.choice(words)} {rng.choice(words)} value",
+            }
+            for c in range(columns_per_table)
+        ]
+        altered = f"2026-01-01T00:00:{version if t < 10 else 0:02d}"
+        out.append({"fqn": fqn, "comment": f"table {t}", "last_altered": altered, "columns": cols})
+    return {"tables": out, "lineage": []}
+
+
+def bench(tables=2000, columns_per_table=20):
+    with tempfile.TemporaryDirectory() as tmp:
+        db = os.path.join(tmp, "index.db")
+        conn = connect(db)
+        snap = synthetic_snapshot(tables, columns_per_table)
+        start = time.perf_counter()
+        refresh(conn, snap)
+        build_s = time.perf_counter() - start
+        start = time.perf_counter()
+        changed = refresh(conn, synthetic_snapshot(tables, columns_per_table, version=1))
+        incr_s = time.perf_counter() - start
+        start = time.perf_counter()
+        hits = search(conn, "amount AND region")
+        search_s = time.perf_counter() - start
+        size_mb = os.path.getsize(db) / 1e6
+        peak_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
+        print(f"tables={tables} columns={tables * columns_per_table}")
+        print(f"full_build_s={build_s:.2f} incremental_s={incr_s:.3f} rewritten={changed['rewritten']}")
+        print(f"search_s={search_s:.4f} hits={len(hits)}")
+        print(f"db_mb={size_mb:.1f} peak_rss_mb={peak_mb:.0f}")
+        conn.close()
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fixture", help="directory with metadata.json and src/")
     parser.add_argument("--db", default=":memory:")
     parser.add_argument("--stats", action="store_true")
     parser.add_argument("--search")
+    parser.add_argument("--bench", action="store_true")
     args = parser.parse_args(argv)
+    if args.bench:
+        bench()
+        return 0
     if not args.fixture:
-        parser.error("--fixture is required")
+        parser.error("--fixture or --bench is required")
     conn = connect(args.db)
     refresh(conn, load_snapshot(args.fixture))
     link_code(conn, os.path.join(args.fixture, "src"))
