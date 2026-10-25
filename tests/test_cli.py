@@ -34,6 +34,41 @@ class CliTest(unittest.TestCase):
         code, second = refresh(self.db)
         self.assertEqual(second["rewritten"], 0)
 
+    def _repo(self, ignore):
+        repo = os.path.join(self.tmp.name, "repo")
+        os.makedirs(repo)
+        subprocess.run(["git", "init", "-q", repo], check=True)
+        if ignore:
+            with open(os.path.join(repo, ".gitignore"), "w") as handle:
+                handle.write(ignore)
+        return repo
+
+    def test_refresh_refuses_a_db_git_does_not_ignore(self):
+        repo = self._repo("")
+        err = io.StringIO()
+        with redirect_stderr(err):
+            code, _ = refresh(os.path.join(repo, "index.db"))
+        self.assertEqual(code, 2)
+        self.assertIn("not ignored", err.getvalue())
+        self.assertFalse(os.path.exists(os.path.join(repo, "index.db")))
+
+    def test_refresh_refuses_a_tracked_db(self):
+        repo = self._repo("*.db\n")
+        db = os.path.join(repo, "index.db")
+        open(db, "w").close()
+        subprocess.run(["git", "-C", repo, "add", "-f", "index.db"], check=True)
+        err = io.StringIO()
+        with redirect_stderr(err):
+            code, _ = refresh(db)
+        self.assertEqual(code, 2)
+        self.assertIn("tracked", err.getvalue())
+
+    def test_refresh_allows_an_ignored_default_db(self):
+        repo = self._repo(".hallmark/\n")
+        code, report = refresh(os.path.join(repo, ".hallmark", "index.db"))
+        self.assertEqual(code, 0)
+        self.assertTrue(report)
+
     def test_refresh_reports_a_bad_snapshot(self):
         bad = os.path.join(self.tmp.name, "bad.json")
         with open(bad, "w", encoding="utf-8") as handle:
