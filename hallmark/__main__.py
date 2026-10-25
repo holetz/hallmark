@@ -8,6 +8,7 @@ ops-serve  answers MCP requests on stdio live from Databricks jobs and pipelines
 import argparse
 import json
 import os
+import subprocess
 import sys
 
 DEFAULT_DB = os.path.join(".hallmark", "index.db")
@@ -31,6 +32,29 @@ def _parser():
     sub.add_parser("models-serve", help="serve MLflow models, runs and drift over MCP stdio")
     sub.add_parser("ops-serve", help="serve Databricks jobs, failures and data quality over MCP stdio")
     return parser
+
+
+def _git(directory, *args):
+    try:
+        return subprocess.run(["git", "-C", directory, *args], capture_output=True, text=True)
+    except OSError:  # no git installed: nothing to guard against
+        return None
+
+
+def _db_unsafe(db):
+    """Why `db` must not be written, or None: inside a git work tree it must be ignored and untracked."""
+    path = os.path.abspath(db)
+    directory = os.path.dirname(path)
+    while directory and not os.path.isdir(directory):
+        directory = os.path.dirname(directory)
+    inside = _git(directory, "rev-parse", "--is-inside-work-tree") if directory else None
+    if inside is None or inside.returncode != 0:
+        return None
+    if _git(directory, "ls-files", "--error-unmatch", path).returncode == 0:
+        return "is tracked by git"
+    if _git(directory, "check-ignore", "-q", path).returncode == 1:
+        return "is not ignored by git (add it to .gitignore)"
+    return None
 
 
 def _snapshot(args):
@@ -73,6 +97,11 @@ def main(argv=None, out=None):
             return 2
         mcp.serve(args.db)
         return 0
+    reason = _db_unsafe(args.db)
+    if reason:
+        print(f"hallmark: refusing --db {args.db}: it {reason}; an index can carry catalog metadata",
+              file=sys.stderr)
+        return 2
     try:
         snapshot = _snapshot(args)
         directory = os.path.dirname(args.db)

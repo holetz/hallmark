@@ -70,6 +70,30 @@ class AllowlistTest(unittest.TestCase):
             dc.DatabricksClient()
 
 
+class HostTest(unittest.TestCase):
+    def test_a_scheme_less_host_gets_https_and_sends_a_request(self):
+        seen = []
+        client = dc.DatabricksClient("adb-x.example.invalid/", "tok", opener_for(seen))
+        client.get("/api/2.1/jobs/list")
+        self.assertEqual(client.host, "https://adb-x.example.invalid")
+        self.assertEqual(seen[0].full_url, "https://adb-x.example.invalid/api/2.1/jobs/list")
+
+    def test_a_host_that_is_not_https_is_refused_without_echoing_it(self):
+        for bad in ("http://secret-host.example.invalid", "ftp://secret-host.example.invalid",
+                    "https://user:pw@secret-host.example.invalid", "https://", "https://h:notaport"):
+            with self.assertRaises(dc.DatabricksError, msg=bad) as ctx:
+                dc.DatabricksClient(bad, "tok")
+            self.assertNotIn("secret-host", str(ctx.exception))
+            self.assertIn("HALLMARK_DBX_HOST", str(ctx.exception))
+
+    def test_a_request_that_cannot_be_built_is_a_fixed_error(self):
+        client = dc.DatabricksClient("https://dbx.example.invalid", "tok", opener_for([]))
+        client.host = "secret-host.example.invalid"
+        with self.assertRaises(dc.DatabricksError) as ctx:
+            client.get("/api/2.1/jobs/list")
+        self.assertNotIn("secret-host", str(ctx.exception))
+
+
 class PagesTest(unittest.TestCase):
     def test_pagination_follows_the_token(self):
         client = stub.StubClient()
@@ -77,6 +101,29 @@ class PagesTest(unittest.TestCase):
                                              params={"limit": 2})]
         self.assertEqual(ids, [101, 102, 103])
         self.assertEqual([c[1].get("page_token") for c in client.calls], [None, "2"])
+
+
+class CapTest(unittest.TestCase):
+    class Endless:
+        def __init__(self):
+            self.calls = 0
+
+        def get(self, path, params=None):
+            self.calls += 1
+            return {"jobs": [{"job_id": self.calls}], "next_page_token": "more"}
+
+    def test_the_page_cap_truncates_instead_of_raising(self):
+        client = self.Endless()
+        listing = dc.pages(client, "/api/2.1/jobs/list", "jobs")
+        self.assertEqual(len(list(listing)), dc.MAX_PAGES)
+        self.assertTrue(listing.truncated)
+        self.assertEqual(client.calls, dc.MAX_PAGES)
+
+    def test_a_listing_that_ends_is_not_truncated(self):
+        listing = dc.pages(stub.StubClient(), "/api/2.1/jobs/list", "jobs", params={"limit": 2},
+                           size_key="limit")
+        self.assertEqual(len(list(listing)), 3)
+        self.assertFalse(listing.truncated)
 
 
 class LocalServerTest(unittest.TestCase):

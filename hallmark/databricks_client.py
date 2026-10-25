@@ -44,6 +44,29 @@ class ReadOnlyError(DatabricksError):
     """A call outside the read-only allowlist was refused before any request."""
 
 
+LOOPBACK = frozenset(("127.0.0.1", "localhost", "::1"))
+
+
+def normalize_host(raw, env_name, error_cls):
+    """Return an https base URL for `raw`, adding the scheme when it is missing.
+
+    Anything else is refused with a fixed message naming `env_name`, never the value; plain http is
+    allowed only for a loopback host, which is how the local test servers are reached.
+    """
+    text = str(raw).strip()
+    try:
+        parts = urllib.parse.urlsplit(text if "://" in text else f"https://{text}")
+        host, scheme = parts.hostname, parts.scheme
+        parts.port  # noqa: B018 - raises ValueError on a malformed port
+    except ValueError:
+        raise error_cls(f"{env_name} is not a valid host") from None
+    valid = (host and parts.username is None and not parts.query and not parts.fragment
+             and (scheme == "https" or (scheme == "http" and host in LOOPBACK)))
+    if not valid:
+        raise error_cls(f"{env_name} must be an https host name or URL")
+    return parts._replace(path=parts.path.rstrip("/")).geturl()
+
+
 def _env(name):
     value = os.environ.get(name)
     if not value:
@@ -53,7 +76,8 @@ def _env(name):
 
 class DatabricksClient:
     def __init__(self, host=None, token=None, opener=urllib.request.urlopen):
-        self.host = (host or _env("HALLMARK_DBX_HOST")).rstrip("/")
+        self.host = normalize_host(host or _env("HALLMARK_DBX_HOST"), "HALLMARK_DBX_HOST",
+                                   DatabricksError)
         self.token = token or _env("HALLMARK_DBX_TOKEN")
         self.opener = opener
 
@@ -62,23 +86,38 @@ class DatabricksClient:
             raise ReadOnlyError(f"refused: {path} is not on the read-only allowlist")
         query = urllib.parse.urlencode(params or {})
         url = f"{self.host}{path}" + (f"?{query}" if query else "")
-        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {self.token}"},
-                                     method="GET")
         try:
+            req = urllib.request.Request(url, headers={"Authorization": f"Bearer {self.token}"},
+                                         method="GET")
             with self.opener(req, timeout=60) as response:
                 return json.loads(response.read().decode("utf-8"))
         except (OSError, ValueError) as exc:
             raise DatabricksError(f"request to {path} failed: {type(exc).__name__}") from None
 
 
+class Pages:
+    """Iterate a paginated listing, following next_page_token up to `max_pages`.
+
+    Hitting the cap with a token still pending stops the iteration and sets `truncated`; it never
+    raises. `truncated` is meaningful once the iteration has finished.
+    """
+
+    def __init__(self, fetch, key, params, max_pages=MAX_PAGES):
+        self.fetch, self.key, self.params, self.max_pages = fetch, key, params, max_pages
+        self.truncated = False
+
+    def __iter__(self):
+        params = dict(self.params)
+        for _ in range(self.max_pages):
+            body = self.fetch(params)
+            yield from body.get(self.key) or []
+            token = body.get("next_page_token")
+            if not token:
+                return
+            params["page_token"] = token
+        self.truncated = True
+
+
 def pages(client, path, key, params=None, size_key="max_results"):
-    """Yield every item of a paginated listing, following next_page_token."""
-    params = {size_key: PAGE_SIZE, **(params or {})}
-    for _ in range(MAX_PAGES):
-        body = client.get(path, params)
-        yield from body.get(key) or []
-        token = body.get("next_page_token")
-        if not token:
-            return
-        params["page_token"] = token
-    raise DatabricksError(f"{path}: more than {MAX_PAGES} pages")
+    """A `Pages` over `path`, `PAGE_SIZE` items per request."""
+    return Pages(lambda p: client.get(path, p), key, {size_key: PAGE_SIZE, **(params or {})})

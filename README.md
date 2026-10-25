@@ -65,20 +65,22 @@ any request exists, and no tool triggers, repairs or cancels a job. `HALLMARK_DB
 
 MCP tools: `list_jobs`, `job_status`, `list_failures`, `get_run`, `reruns`, `list_pipelines`,
 `pipeline_status`, `data_quality`, `alerts`. List tools take `limit` (default 10, capped at 50) and
-report `truncated`; error text is cut to 2000 characters.
+report `truncated`; error text is cut to 2000 characters. Error traces may carry data a job
+printed, so treat them as sensitive. `list_jobs` sends `name_filter` to the server as the job
+`name` query; the pipelines filter is applied locally on the capped page.
 
 Failure convention: a run failed when `result_state` is `FAILED` or `TIMEDOUT`, or its
 `life_cycle_state` is `INTERNAL_ERROR`; `CANCELED` is reported apart. `list_failures` takes `hours`
 (default 24, max 720). `data_quality` aggregates pipeline expectations from the event log and flags
-`alert` where records failed. Proven on synthetic fixtures only; field names are confirmed in the
-first live run.
+`alert` where records failed. Proven on synthetic fixtures only; field names are an assumption, to
+confirm against a real workspace.
 
 ## Design notes
 
 - The connector contract is a plain snapshot dict (`hallmark/snapshot.py`); the Unity Catalog
   connector and a JSON file are interchangeable, and only `refresh` ever imports a connector.
 - The Unity Catalog connector is proven on synthetic fixtures only (`tests/fixtures/uc/`); the REST
-  field names and the feature-table marker are confirmed in the first live run.
+  field names and the feature-table marker are an assumption, to confirm against a real workspace.
 - Search is FTS5 with BM25, stemming and identifier splitting (`order_total` is found by "order
   total"). Embeddings are deliberately not built; see the spec's open decisions.
 - The spike that chose this design is kept as a record in `spikes/catalog-engine/`.

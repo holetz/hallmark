@@ -6,7 +6,7 @@ change after every run. The client can only read (see `mlflow_client`); this mod
 that writes, promotes or trains. Every list takes a `limit` capped at MAX_LIMIT and reports
 `truncated`.
 
-Drift convention (assumption, confirmed against a real monitoring job): a metric is a drift metric
+Drift convention (assumption, to confirm against a real workspace): a metric is a drift metric
 when its key contains one of DRIFT_MARKERS (case-insensitive). Its threshold is the run param
 `<key>.threshold`, else the call's `threshold` (default DEFAULT_THRESHOLD). A value above the
 threshold is an alert, `high` at twice the threshold or more, else `medium`.
@@ -17,7 +17,7 @@ import sys
 import time
 
 from . import mcp
-from .mcp import MAX_LIMIT, _cut, _error, _limit, _result, _schema, _text
+from .mcp import MAX_LIMIT, _cut, _error, _limit, _result, _schema, _text, collect, flag
 from .mlflow_client import API, MlflowError, pages
 
 DRIFT_MARKERS = ("drift", "psi", "ks_stat")
@@ -64,8 +64,9 @@ def _run(raw):
 
 
 def _versions(client, name):
-    found = pages(client, f"{API}/model-versions/search", "model_versions", {"filter": f"name='{name}'"})
-    return sorted(found, key=lambda v: int(v["version"]), reverse=True)
+    found, cut = collect(pages(client, f"{API}/model-versions/search", "model_versions",
+                               {"filter": f"name='{name}'"}))
+    return sorted(found, key=lambda v: int(v["version"]), reverse=True), cut
 
 
 def _get_run(client, run_id):
@@ -74,7 +75,7 @@ def _get_run(client, run_id):
 
 def _select(client, name, args):
     """Pick the version: the requested one, else the champion alias, else the highest number."""
-    versions = _versions(client, name)
+    versions, _ = _versions(client, name)
     if not versions:
         raise LookupError(f"model {name} has no versions")
     wanted = args.get("version")
@@ -90,33 +91,35 @@ def _select(client, name, args):
 
 def tool_list_models(client, args):
     limit = _limit(args)
-    models = sorted(_contains(pages(client, f"{API}/registered-models/search", "registered_models"),
-                              args), key=lambda m: m["name"])
+    raw, cut = collect(pages(client, f"{API}/registered-models/search", "registered_models"))
+    models = sorted(_contains(raw, args), key=lambda m: m["name"])
     shaped = [{"name": m["name"], "description": m.get("description") or "",
                "updated": _iso(m.get("last_updated_timestamp")),
                "aliases": {a["alias"]: str(a["version"]) for a in m.get("aliases") or []},
                "latest_versions": [_short_version(v) for v in m.get("latest_versions") or []]}
               for m in models]
-    return _cut(shaped, limit)
+    return flag(_cut(shaped, limit), cut)
 
 
 def tool_get_model(client, args):
     name, limit = _name(args), _limit(args)
     model = client.get(f"{API}/registered-models/get", {"name": name}).get("registered_model") or {}
+    versions, cut = _versions(client, name)
     versions = [{**_short_version(v), "created": _iso(v.get("creation_timestamp")),
-                 "description": v.get("description") or ""} for v in _versions(client, name)]
+                 "description": v.get("description") or ""} for v in versions]
     return {"name": name, "description": model.get("description") or "",
             "aliases": {a["alias"]: str(a["version"]) for a in model.get("aliases") or []},
-            "versions": _cut(versions, limit)}
+            "versions": flag(_cut(versions, limit), cut)}
 
 
 def tool_list_experiments(client, args):
     limit = _limit(args)
-    found = _contains(pages(client, f"{API}/experiments/search", "experiments", post=True), args)
-    return _cut([{"experiment_id": e["experiment_id"], "name": e["name"],
+    raw, cut = collect(pages(client, f"{API}/experiments/search", "experiments", post=True))
+    found = _contains(raw, args)
+    return flag(_cut([{"experiment_id": e["experiment_id"], "name": e["name"],
                   "lifecycle_stage": e.get("lifecycle_stage") or "",
                   "updated": _iso(e.get("last_update_time"))} for e in sorted(found, key=lambda e: e["name"])],
-                limit)
+                      limit), cut)
 
 
 def tool_list_runs(client, args):
@@ -148,21 +151,16 @@ def _stability(points):
 
 def _history(client, run_id, key):
     points = pages(client, f"{API}/metrics/get-history", "metrics", {"run_id": run_id, "metric_key": key})
-    found = []
-    for point in points:
-        found.append(point)
-        if len(found) >= HISTORY_CAP:
-            break
-    return found
+    return collect(points, HISTORY_CAP)
 
 
 def tool_metric_history(client, args):
     run_id, key, limit = _text(args, "run_id"), _text(args, "metric"), _limit(args)
-    points = _history(client, run_id, key)
+    points, cut = _history(client, run_id, key)
     latest = sorted(points, key=lambda p: (p["step"], p["timestamp"]), reverse=True)
     return {"run_id": run_id, "metric": key, "summary": _stability(points),
-            "history": _cut([{"step": p["step"], "value": p["value"],
-                              "at": _iso(p["timestamp"])} for p in latest], limit)}
+            "history": flag(_cut([{"step": p["step"], "value": p["value"],
+                                   "at": _iso(p["timestamp"])} for p in latest], limit), cut)}
 
 
 def _is_drift(key):
@@ -190,7 +188,7 @@ def tool_performance(client, args):
                                             "truncated": len(versions) > len(shown)}}
     if args.get("metric") and chosen.get("run_id"):
         out["stability"] = {"metric": args["metric"],
-                            **_stability(_history(client, chosen["run_id"], args["metric"]))}
+                            **_stability(_history(client, chosen["run_id"], args["metric"])[0])}
     return out
 
 
@@ -251,14 +249,7 @@ TOOLS = {
 
 
 def _call(client, params):
-    name, args = params.get("name"), params.get("arguments") or {}
-    if name not in TOOLS or not isinstance(args, dict):
-        return None
-    try:
-        body = TOOLS[name][0](client, args)
-        return {"content": [{"type": "text", "text": json.dumps(body, ensure_ascii=False)}]}
-    except (ValueError, LookupError, MlflowError) as exc:
-        return {"isError": True, "content": [{"type": "text", "text": str(exc.args[0])}]}
+    return mcp.call_tool(TOOLS, client, params, (ValueError, LookupError, MlflowError))
 
 
 def handle(client, message):
@@ -290,10 +281,7 @@ def serve(client, stdin=None, stdout=None):
     for line in stdin:
         if not line.strip():
             continue
-        try:
-            response = handle(client, json.loads(line))
-        except json.JSONDecodeError:
-            response = _error(None, -32700, "parse error")
+        response = mcp.respond(handle, client, line)
         if response is not None:
             stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
             stdout.flush()

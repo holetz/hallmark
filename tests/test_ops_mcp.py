@@ -57,6 +57,16 @@ class ProtocolTest(unittest.TestCase):
         self.assertEqual(self.rpc("tools/call", {"name": "run_now"})["error"]["code"], -32602)
         self.assertEqual(ops_mcp.handle(self.client, {"id": 1})["error"]["code"], -32600)
 
+    def test_wrong_argument_types_are_tool_errors_and_the_next_call_works(self):
+        for tool, args in (("list_jobs", {"name_filter": 5}), ("alerts", {"name_filter": ["a"]}),
+                           ("list_pipelines", {"name_filter": {}}), ("data_quality", {"pipeline_id": 1}),
+                           ("job_status", {"job_id": 101, "limit": "3"})):
+            err, text = call(self.client, tool, **args)
+            self.assertTrue(err, tool)
+        for params in ([1], "x", {"name": "list_jobs", "arguments": "a"}):
+            self.assertEqual(self.rpc("tools/call", params)["error"]["code"], -32602)
+        self.assertFalse(call(self.client, "list_jobs")[0])
+
     def test_serve_answers_lines_and_reports_parse_errors(self):
         out = io.StringIO()
         ops_mcp.serve(self.client, io.StringIO('{"jsonrpc":"2.0","id":1,"method":"ping"}\n\nnot json\n'), out)
@@ -73,6 +83,73 @@ class ProtocolTest(unittest.TestCase):
         self.assertTrue(self.client.calls)
         for path, _ in self.client.calls:
             self.assertTrue(path in dc.READ_PATHS or dc.PIPELINE_PATH.fullmatch(path), path)
+
+
+class Endless:
+    """A workspace whose every listing has a next page, so only the page cap ends it."""
+
+    def __init__(self):
+        self.calls = []
+
+    def get(self, path, params=None):
+        self.calls.append((path, dict(params or {})))
+        n = len(self.calls)
+        if path.endswith("/runs/get"):
+            return {"run_id": n, "repair_history": []}
+        state = {"life_cycle_state": "TERMINATED", "result_state": "SUCCESS"}
+        items = {"/api/2.1/jobs/list": ("jobs", {"job_id": n, "settings": {"name": f"j{n}"}}),
+                 "/api/2.1/jobs/runs/list": ("runs", {"run_id": n, "job_id": 1, "start_time": n,
+                                                      "state": state}),
+                 "/api/2.0/pipelines": ("statuses", {"pipeline_id": f"p{n}", "name": f"p{n}"}),
+                 "/api/2.0/sql/alerts": ("results", {"id": n, "display_name": f"a{n}"}),
+                 "/api/2.0/pipelines/pipe/events": ("events", {"timestamp": n, "level": "ERROR"}),
+                 "/api/2.0/pipelines/pipe/updates": ("updates", {"update_id": n})}
+        if path == "/api/2.0/pipelines/pipe":
+            return {"name": "pipe"}
+        key, item = items[path]
+        return {key: [item], "next_page_token": "more"}
+
+
+class TruncationTest(unittest.TestCase):
+    def test_every_listing_reports_the_page_cap_as_truncated(self):
+        for tool, args in (("list_jobs", {}), ("list_pipelines", {}), ("alerts", {}),
+                           ("job_status", {"job_id": 1}), ("list_failures", {}),
+                           ("pipeline_status", {"pipeline_id": "pipe"}),
+                           ("data_quality", {"pipeline_id": "pipe"})):
+            client = Endless()
+            if tool == "job_status":
+                client.get = self._with_job(client)
+            err, body = call(client, tool, limit=50, **args)
+            self.assertFalse(err, tool)
+            flagged = body["runs"] if tool == "job_status" else (
+                body["errors"] if tool == "pipeline_status" else body)
+            self.assertTrue(flagged["truncated"], tool)
+
+    @staticmethod
+    def _with_job(client):
+        real = client.get
+
+        def get(path, params=None):
+            return {"job_id": 1, "settings": {"name": "j"}} if path.endswith("/jobs/get") else real(path, params)
+        return get
+
+    def test_list_jobs_sends_the_name_to_the_server(self):
+        client = Client()
+        call(client, "list_jobs", name_filter="nightly")
+        self.assertEqual(client.calls[0][1].get("name"), "nightly")
+
+    def test_reruns_reports_the_cut_beyond_ten_failed_runs(self):
+        class Finite:
+            def get(self, path, params=None):
+                if path.endswith("/runs/get"):
+                    return {"repair_history": []}
+                return {"runs": [{"run_id": n, "job_id": 1, "start_time": n,
+                                  "state": {"life_cycle_state": "TERMINATED", "result_state": "FAILED"}}
+                                 for n in range(1, 13)]}
+        err, body = call(Finite(), "reruns", job_id=1, limit=50)
+        self.assertFalse(err)
+        self.assertEqual(body["reruns_read"], ops_mcp.RERUN_RUNS)
+        self.assertTrue(body["truncated"])
 
 
 class JobsTest(unittest.TestCase):

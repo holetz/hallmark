@@ -19,6 +19,8 @@ import os
 import urllib.parse
 import urllib.request
 
+from .databricks_client import Pages, normalize_host
+
 API = "/api/2.0/mlflow"
 SEARCH_PATHS = (f"{API}/experiments/search", f"{API}/runs/search")
 MAX_PAGES = 20
@@ -42,43 +44,37 @@ def _env(name, required=True):
 
 class MlflowClient:
     def __init__(self, host=None, token=None, opener=urllib.request.urlopen):
-        self.host = (host or _env("HALLMARK_MLFLOW_HOST")).rstrip("/")
+        self.host = normalize_host(host or _env("HALLMARK_MLFLOW_HOST"), "HALLMARK_MLFLOW_HOST",
+                                   MlflowError)
         self.token = token if token is not None else _env("HALLMARK_MLFLOW_TOKEN", required=False)
         self.opener = opener
 
-    def _send(self, url, body=None):
+    def _send(self, path, query="", body=None):
+        url = f"{self.host}{path}" + (f"?{query}" if query else "")
         headers = {"Content-Type": "application/json"}
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
         data = json.dumps(body).encode("utf-8") if body is not None else None
-        req = urllib.request.Request(url, data=data, headers=headers)
         try:
+            req = urllib.request.Request(url, data=data, headers=headers)
             with self.opener(req, timeout=60) as response:
                 return json.loads(response.read().decode("utf-8"))
         except (OSError, ValueError) as exc:
-            raise MlflowError(f"request to {urllib.parse.urlsplit(url).path} failed: "
-                              f"{type(exc).__name__}") from None
+            raise MlflowError(f"request to {path} failed: {type(exc).__name__}") from None
 
     def get(self, path, params=None):
         if not path.startswith(API + "/"):
             raise ReadOnlyError(f"refused: {path} is outside {API}")
         query = urllib.parse.urlencode(params or {})
-        return self._send(f"{self.host}{path}" + (f"?{query}" if query else ""))
+        return self._send(path, query)
 
     def search(self, path, body):
         if path not in SEARCH_PATHS:
             raise ReadOnlyError(f"refused: POST {path} is not a read-only search")
-        return self._send(f"{self.host}{path}", body)
+        return self._send(path, body=body)
 
 
 def pages(client, path, key, params=None, post=False):
-    """Yield every item of a paginated listing, following next_page_token."""
-    params = {"max_results": PAGE_SIZE, **(params or {})}
-    for _ in range(MAX_PAGES):
-        body = client.search(path, params) if post else client.get(path, params)
-        yield from body.get(key) or []
-        token = body.get("next_page_token")
-        if not token:
-            return
-        params["page_token"] = token
-    raise MlflowError(f"{path}: more than {MAX_PAGES} pages")
+    """A `Pages` over `path`, `PAGE_SIZE` items per request."""
+    fetch = (lambda p: client.search(path, p)) if post else (lambda p: client.get(path, p))
+    return Pages(fetch, key, {"max_results": PAGE_SIZE, **(params or {})}, MAX_PAGES)

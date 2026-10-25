@@ -103,6 +103,32 @@ class ToolsTest(unittest.TestCase):
             self.assertTrue(err, name)
             self.assertIsInstance(text, str)
 
+    def test_wrong_argument_types_are_tool_errors(self):
+        for name, args in (("search", {"query": 5}), ("search", {"query": "x", "kind": 3}),
+                           ("get_table", {"fqn": ["a"]}), ("lineage", {"fqn": "a", "depth": "2"})):
+            err, text = call(self.conn, name, **args)
+            self.assertTrue(err, name)
+            self.assertIn("must be", text)
+
+    def test_malformed_params_are_jsonrpc_errors_and_the_stream_survives(self):
+        for params in ([1], "x", {"name": ["search"]}, {"name": "search", "arguments": [1]}):
+            reply = mcp.handle(self.conn, {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                                           "params": params})
+            self.assertEqual(reply["error"]["code"], -32602, params)
+
+    def test_an_unexpected_exception_is_a_fixed_tool_error(self):
+        boom = {"x": (lambda conn, args: 1 / 0, "d", mcp._schema({}))}
+        reply = mcp.call_tool(boom, self.conn, {"name": "x"})
+        self.assertEqual(reply["content"][0]["text"], "internal error in tool x")
+        self.assertTrue(reply["isError"])
+
+    def test_serve_survives_a_handler_crash(self):
+        def crash(conn, message):
+            raise RuntimeError("secret-host")
+        reply = mcp.respond(crash, self.conn, '{"jsonrpc":"2.0","id":7,"method":"ping"}')
+        self.assertEqual((reply["id"], reply["error"]["code"]), (7, -32603))
+        self.assertNotIn("secret-host", json.dumps(reply))
+
     def test_output_is_bounded(self):
         _, body = call(self.conn, "search", query="id", limit=1)
         self.assertEqual(len(body["items"]), 1)
