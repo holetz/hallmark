@@ -75,6 +75,21 @@ class ConnectorTest(unittest.TestCase):
         self.assertEqual(schemas, {"sales", "ml"})
         self.assertFalse(any("system" == p.get("catalog_name") for _, p in rest.calls))
 
+    def test_catalog_identifier_is_quoted_and_validated(self):
+        seen = []
+
+        class Recorder:
+            def query(self, statement):
+                seen.append(statement)
+                return []
+
+        uc._tags(Recorder(), "demo-sales")
+        self.assertTrue(all("`demo-sales`.information_schema" in s for s in seen))
+        self.assertEqual(len(seen), 2)
+        with self.assertRaises(uc.ConnectorError):
+            uc._tags(Recorder(), "bad`name")
+        self.assertEqual(len(seen), 2)
+
     def test_tags_and_column_tags_are_mapped(self):
         snap, _, _ = build()
         orders = snap["tables"][0]

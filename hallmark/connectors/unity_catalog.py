@@ -18,8 +18,8 @@ SQL rows (statement results as dicts)
   system.access.table_lineage     -> source_table_full_name, target_table_full_name
   system.access.column_lineage    -> the table pair plus source_column_name, target_column_name
 
-A table's `feature_table` property set to "true" marks a feature table (an assumption confirmed in
-the first live run). A missing optional field is tolerated; a missing required one raises
+A table's `feature_table` property set to "true" marks a feature table (an assumption, to confirm
+against a real workspace). A missing optional field is tolerated; a missing required one raises
 ConnectorError naming it. The production clients below use urllib and are only exercised with a
 stub transport: no network call is made by this repository's tests.
 """
@@ -88,13 +88,21 @@ def _table(raw, tags):
     return out
 
 
+def _identifier(name):
+    """Backtick-quote a catalog name for SQL; a name with a backtick or control character is refused."""
+    if not name or "`" in name or any(ord(ch) < 32 for ch in name):
+        raise ConnectorError(f"catalog name {name!r} cannot be used in SQL")
+    return f"`{name}`"
+
+
 def _tags(sql, catalog):
+    quoted = _identifier(catalog)
     where = f"WHERE catalog_name = {_sql_literal(catalog)}"
     table, column = {}, {}
-    for row in sql.query(f"SELECT * FROM {catalog}.information_schema.table_tags {where}"):
+    for row in sql.query(f"SELECT * FROM {quoted}.information_schema.table_tags {where}"):
         fqn = f"{row['catalog_name']}.{row['schema_name']}.{row['table_name']}"
         table.setdefault(fqn, {})[row["tag_name"]] = row.get("tag_value") or ""
-    for row in sql.query(f"SELECT * FROM {catalog}.information_schema.column_tags {where}"):
+    for row in sql.query(f"SELECT * FROM {quoted}.information_schema.column_tags {where}"):
         fqn = f"{row['catalog_name']}.{row['schema_name']}.{row['table_name']}"
         column.setdefault((fqn, row["column_name"]), {})[row["tag_name"]] = row.get("tag_value") or ""
     return {"table": table, "column": column}
