@@ -103,6 +103,29 @@ class PagesTest(unittest.TestCase):
         self.assertEqual([c[1].get("page_token") for c in client.calls], [None, "2"])
 
 
+class CapTest(unittest.TestCase):
+    class Endless:
+        def __init__(self):
+            self.calls = 0
+
+        def get(self, path, params=None):
+            self.calls += 1
+            return {"jobs": [{"job_id": self.calls}], "next_page_token": "more"}
+
+    def test_the_page_cap_truncates_instead_of_raising(self):
+        client = self.Endless()
+        listing = dc.pages(client, "/api/2.1/jobs/list", "jobs")
+        self.assertEqual(len(list(listing)), dc.MAX_PAGES)
+        self.assertTrue(listing.truncated)
+        self.assertEqual(client.calls, dc.MAX_PAGES)
+
+    def test_a_listing_that_ends_is_not_truncated(self):
+        listing = dc.pages(stub.StubClient(), "/api/2.1/jobs/list", "jobs", params={"limit": 2},
+                           size_key="limit")
+        self.assertEqual(len(list(listing)), 3)
+        self.assertFalse(listing.truncated)
+
+
 class LocalServerTest(unittest.TestCase):
     """The production urllib path against a fixture served on 127.0.0.1."""
 

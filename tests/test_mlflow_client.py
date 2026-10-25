@@ -95,6 +95,22 @@ class PagesTest(unittest.TestCase):
         self.assertEqual(len(runs), 3)
 
 
+class CapTest(unittest.TestCase):
+    class Endless:
+        def get(self, path, params=None):
+            return {"metrics": [{"step": 1}], "next_page_token": "more"}
+
+    def test_the_page_cap_truncates_instead_of_raising(self):
+        listing = mc.pages(self.Endless(), f"{mc.API}/metrics/get-history", "metrics")
+        self.assertEqual(len(list(listing)), mc.MAX_PAGES)
+        self.assertTrue(listing.truncated)
+
+    def test_a_listing_that_ends_is_not_truncated(self):
+        listing = mc.pages(stub.StubClient(), f"{mc.API}/registered-models/search", "registered_models")
+        list(listing)
+        self.assertFalse(listing.truncated)
+
+
 class LocalServerTest(unittest.TestCase):
     """The production urllib path against a fixture served on 127.0.0.1."""
 

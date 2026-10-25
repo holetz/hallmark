@@ -95,14 +95,29 @@ class DatabricksClient:
             raise DatabricksError(f"request to {path} failed: {type(exc).__name__}") from None
 
 
+class Pages:
+    """Iterate a paginated listing, following next_page_token up to `max_pages`.
+
+    Hitting the cap with a token still pending stops the iteration and sets `truncated`; it never
+    raises. `truncated` is meaningful once the iteration has finished.
+    """
+
+    def __init__(self, fetch, key, params, max_pages=MAX_PAGES):
+        self.fetch, self.key, self.params, self.max_pages = fetch, key, params, max_pages
+        self.truncated = False
+
+    def __iter__(self):
+        params = dict(self.params)
+        for _ in range(self.max_pages):
+            body = self.fetch(params)
+            yield from body.get(self.key) or []
+            token = body.get("next_page_token")
+            if not token:
+                return
+            params["page_token"] = token
+        self.truncated = True
+
+
 def pages(client, path, key, params=None, size_key="max_results"):
-    """Yield every item of a paginated listing, following next_page_token."""
-    params = {size_key: PAGE_SIZE, **(params or {})}
-    for _ in range(MAX_PAGES):
-        body = client.get(path, params)
-        yield from body.get(key) or []
-        token = body.get("next_page_token")
-        if not token:
-            return
-        params["page_token"] = token
-    raise DatabricksError(f"{path}: more than {MAX_PAGES} pages")
+    """A `Pages` over `path`, `PAGE_SIZE` items per request."""
+    return Pages(lambda p: client.get(path, p), key, {size_key: PAGE_SIZE, **(params or {})})

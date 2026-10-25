@@ -19,7 +19,7 @@ import os
 import urllib.parse
 import urllib.request
 
-from .databricks_client import normalize_host
+from .databricks_client import Pages, normalize_host
 
 API = "/api/2.0/mlflow"
 SEARCH_PATHS = (f"{API}/experiments/search", f"{API}/runs/search")
@@ -75,13 +75,6 @@ class MlflowClient:
 
 
 def pages(client, path, key, params=None, post=False):
-    """Yield every item of a paginated listing, following next_page_token."""
-    params = {"max_results": PAGE_SIZE, **(params or {})}
-    for _ in range(MAX_PAGES):
-        body = client.search(path, params) if post else client.get(path, params)
-        yield from body.get(key) or []
-        token = body.get("next_page_token")
-        if not token:
-            return
-        params["page_token"] = token
-    raise MlflowError(f"{path}: more than {MAX_PAGES} pages")
+    """A `Pages` over `path`, `PAGE_SIZE` items per request."""
+    fetch = (lambda p: client.search(path, p)) if post else (lambda p: client.get(path, p))
+    return Pages(fetch, key, {"max_results": PAGE_SIZE, **(params or {})}, MAX_PAGES)
