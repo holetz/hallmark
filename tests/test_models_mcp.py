@@ -17,6 +17,22 @@ class Client(stub.StubClient):
             raise mc.MlflowError(f"{path}: RESOURCE_DOES_NOT_EXIST") from None
 
 
+class Endless:
+    """A registry whose every listing has a next page, so only the page cap ends it."""
+
+    def get(self, path, params=None):
+        if path.endswith("/registered-models/get"):
+            return {"registered_model": {}}
+        key, item = {"registered-models/search": ("registered_models", {"name": "m"}),
+                     "model-versions/search": ("model_versions", {"name": "m", "version": "1"}),
+                     "metrics/get-history": ("metrics", {"step": 1, "value": 1.0, "timestamp": 1})
+                     }[path.split("/mlflow/")[1]]
+        return {key: [item], "next_page_token": "more"}
+
+    def search(self, path, body):
+        return {"experiments": [{"experiment_id": "1", "name": "e"}], "next_page_token": "more"}
+
+
 def call(client, tool, **args):
     reply = models_mcp.handle(client, {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                                        "params": {"name": tool, "arguments": args}})
@@ -54,6 +70,15 @@ class ProtocolTest(unittest.TestCase):
         for params in ([1], "x", {"name": "list_models", "arguments": "a"}):
             self.assertEqual(self.rpc("tools/call", params)["error"]["code"], -32602)
         self.assertFalse(call(self.client, "list_models")[0])
+
+    def test_a_page_cap_is_reported_as_truncated_not_raised(self):
+        for tool, args, pick in (("list_models", {}, lambda b: b), ("list_experiments", {}, lambda b: b),
+                                 ("get_model", {"name": "m"}, lambda b: b["versions"]),
+                                 ("metric_history", {"run_id": "r", "metric": "k"},
+                                  lambda b: b["history"])):
+            err, body = call(Endless(), tool, limit=50, **args)
+            self.assertFalse(err, tool)
+            self.assertTrue(pick(body)["truncated"], tool)
 
     def test_errors(self):
         self.assertEqual(self.rpc("nope")["error"]["code"], -32601)

@@ -22,12 +22,11 @@ import time
 
 from . import mcp
 from .databricks_client import DatabricksError, pages
-from .mcp import MAX_LIMIT, _cut, _error, _limit, _result, _schema, _text
+from .mcp import MAX_LIMIT, _cut, _error, _limit, _result, _schema, _text, collect, flag
 
 TEXT_CAP = 2000
 DEFAULT_HOURS = 24
 MAX_HOURS = 720
-FETCH_CAP = 500
 RERUN_RUNS = 10
 FAILED_RESULTS = ("FAILED", "TIMEDOUT")
 PIPELINE_ID = re.compile(r"[A-Za-z0-9_-]+")
@@ -106,8 +105,8 @@ def _runs(client, job_id=None, start_from=None, completed_only=False):
         params["start_time_from"] = int(start_from)
     if completed_only:
         params["completed_only"] = "true"
-    found = itertools.islice(pages(client, f"{RUNS}/list", "runs", params, size_key="limit"), FETCH_CAP)
-    return sorted(found, key=lambda r: r.get("start_time") or 0, reverse=True)
+    found, cut = collect(pages(client, f"{RUNS}/list", "runs", params, size_key="limit"))
+    return sorted(found, key=lambda r: r.get("start_time") or 0, reverse=True), cut
 
 
 def _hours(args):
@@ -119,19 +118,19 @@ def _hours(args):
 
 def tool_list_jobs(client, args):
     limit = _limit(args)
+    params = {"name": args["name_filter"]} if args.get("name_filter") else None
+    raw, cut = collect(pages(client, f"{JOBS}/list", "jobs", params, size_key="limit"))
     jobs = [{"name": j["settings"].get("name") or "", "job_id": j["job_id"],
              "schedule": (j["settings"].get("schedule") or {}).get("quartz_cron_expression"),
              "paused": (j["settings"].get("schedule") or {}).get("pause_status") == "PAUSED",
-             "tags": j["settings"].get("tags") or {}}
-            for j in pages(client, f"{JOBS}/list", "jobs", size_key="limit")]
-    needle = (args.get("name_filter") or "").lower()
-    return _cut(sorted((j for j in jobs if needle in j["name"].lower()), key=lambda j: j["name"]), limit)
+             "tags": j["settings"].get("tags") or {}} for j in raw]
+    return flag(_cut(sorted(jobs, key=lambda j: j["name"]), limit), cut)
 
 
 def tool_job_status(client, args):
     job_id, limit = _id(args, "job_id"), _limit(args)
     job = client.get(f"{JOBS}/get", {"job_id": job_id})
-    runs = _runs(client, job_id)
+    runs, cut = _runs(client, job_id)
     done = [r for r in runs if _state(r)[0] != "RUNNING"]
     streak = len(list(itertools.takewhile(_failed, done)))
     success = next((r for r in done if _state(r)[1] == "SUCCESS"), None)
@@ -139,18 +138,18 @@ def tool_job_status(client, args):
             "running": sum(1 for r in runs if _state(r)[0] == "RUNNING"),
             "consecutive_failures": streak,
             "last_success": _iso(success.get("start_time")) if success else None,
-            "runs": _cut([_short(r) for r in runs], limit)}
+            "runs": flag(_cut([_short(r) for r in runs], limit), cut)}
 
 
 def tool_list_failures(client, args):
     limit, hours = _limit(args), _hours(args)
     job_id = _id(args, "job_id") if args.get("job_id") is not None else None
     start_from = _now() * 1000 - hours * 3600 * 1000
-    runs = _runs(client, job_id, start_from, completed_only=True)
+    runs, cut = _runs(client, job_id, start_from, completed_only=True)
     failures = [{**_short(r), "failed_tasks": _failed_tasks(r)} for r in runs if _failed(r)]
     return {"window_hours": hours, "runs_checked": len(runs),
             "canceled": sum(1 for r in runs if _state(r)[1] == "CANCELED"),
-            **_cut(failures, limit)}
+            **flag(_cut(failures, limit), cut)}
 
 
 def _output(client, run_id):
@@ -177,7 +176,7 @@ def tool_get_run(client, args):
 
 def tool_reruns(client, args):
     job_id, limit = _id(args, "job_id"), _limit(args)
-    runs = _runs(client, job_id)
+    runs, cut = _runs(client, job_id)
     failed = [r for r in runs if _failed(r)]
     items = []
     for run in failed[:RERUN_RUNS]:
@@ -192,36 +191,39 @@ def tool_reruns(client, args):
                       "result": _state(run)[1] or _state(run)[0], "attempts": 1 + len(retries),
                       "retried_by": [r["run_id"] for r in retries], "repairs": len(repairs),
                       "last_result": last, "recovered": last == "SUCCESS"})
-    return {"job_id": job_id, "failed_runs": len(failed), "reruns_read": len(items), **_cut(items, limit)}
+    return {"job_id": job_id, "failed_runs": len(failed), "reruns_read": len(items),
+            **flag(_cut(items, limit), cut or len(failed) > RERUN_RUNS)}
 
 
 def tool_list_pipelines(client, args):
     limit = _limit(args)
-    found = _contains(pages(client, PIPELINES, "statuses"), "name", args.get("name_filter"))
-    return _cut([{"pipeline_id": p["pipeline_id"], "name": p.get("name") or "", "state": p.get("state") or "",
-                  "health": p.get("health") or "",
-                  "latest_update": ((p.get("latest_updates") or [{}])[0]).get("state")}
-                 for p in sorted(found, key=lambda p: p.get("name") or "")], limit)
+    raw, cut = collect(pages(client, PIPELINES, "statuses"))
+    found = _contains(raw, "name", args.get("name_filter"))
+    return flag(_cut([{"pipeline_id": p["pipeline_id"], "name": p.get("name") or "",
+                       "state": p.get("state") or "", "health": p.get("health") or "",
+                       "latest_update": ((p.get("latest_updates") or [{}])[0]).get("state")}
+                      for p in sorted(found, key=lambda p: p.get("name") or "")], limit), cut)
 
 
 def _events(client, pipeline_id):
-    found = itertools.islice(pages(client, f"{PIPELINES}/{pipeline_id}/events", "events"), FETCH_CAP)
-    return sorted(found, key=lambda e: e.get("timestamp") or 0, reverse=True)
+    found, cut = collect(pages(client, f"{PIPELINES}/{pipeline_id}/events", "events"))
+    return sorted(found, key=lambda e: e.get("timestamp") or 0, reverse=True), cut
 
 
 def tool_pipeline_status(client, args):
     pid, limit = _pipeline_id(args), _limit(args)
     pipeline = client.get(f"{PIPELINES}/{pid}")
     updates = list(itertools.islice(pages(client, f"{PIPELINES}/{pid}/updates", "updates"), limit + 1))
+    events, cut = _events(client, pid)
     errors = [{"timestamp": _iso(e.get("timestamp")), "update_id": (e.get("origin") or {}).get("update_id"),
                "flow": (e.get("origin") or {}).get("flow_name"), "message": _trunc(e.get("message") or "")}
-              for e in _events(client, pid) if e.get("level") == "ERROR"]
+              for e in events if e.get("level") == "ERROR"]
     return {"pipeline_id": pid, "name": pipeline.get("name") or "", "state": pipeline.get("state") or "",
             "health": pipeline.get("health") or "",
             "updates": _cut([{"update_id": u.get("update_id"), "state": u.get("state"),
                               "created": u.get("creation_time"), "cause": u.get("cause")} for u in updates],
                             limit),
-            "errors": _cut(errors, limit)}
+            "errors": flag(_cut(errors, limit), cut)}
 
 
 def _expectations(event):
@@ -232,7 +234,8 @@ def _expectations(event):
 def tool_data_quality(client, args):
     pid, limit = _pipeline_id(args), _limit(args)
     table = args.get("table")
-    events = [e for e in _events(client, pid) if _expectations(e)]
+    found, cut = _events(client, pid)
+    events = [e for e in found if _expectations(e)]
     update = (events[0].get("origin") or {}).get("update_id") if events else None
     totals = {}
     for event in events:
@@ -249,24 +252,25 @@ def tool_data_quality(client, args):
              "pass_rate": round(p / (p + f), 4) if p + f else None, "alert": f > 0}
             for (d, n), (p, f) in sorted(totals.items())]
     return {"pipeline_id": pid, "update_id": update, "monitored": bool(events),
-            "alerts": sum(1 for r in rows if r["alert"]), **_cut(rows, limit)}
+            "alerts": sum(1 for r in rows if r["alert"]), **flag(_cut(rows, limit), cut)}
 
 
 def tool_alerts(client, args):
     limit, state = _limit(args), args.get("state")
-    found = _contains(pages(client, "/api/2.0/sql/alerts", "results"), "display_name", args.get("name_filter"))
+    raw, cut = collect(pages(client, "/api/2.0/sql/alerts", "results"))
+    found = _contains(raw, "display_name", args.get("name_filter"))
     if state:
         found = [a for a in found if a.get("state") == state]
-    return _cut([{"id": a.get("id"), "name": a.get("display_name") or "", "state": a.get("state") or "",
-                  "lifecycle_state": a.get("lifecycle_state") or "", "updated": a.get("update_time")}
-                 for a in sorted(found, key=lambda a: a.get("display_name") or "")], limit)
+    return flag(_cut([{"id": a.get("id"), "name": a.get("display_name") or "", "state": a.get("state") or "",
+                       "lifecycle_state": a.get("lifecycle_state") or "", "updated": a.get("update_time")}
+                      for a in sorted(found, key=lambda a: a.get("display_name") or "")], limit), cut)
 
 
 _LIMIT = {"type": "integer", "minimum": 1, "maximum": MAX_LIMIT, "description": "Max items, default 10"}
 _JOB = {"type": ["string", "integer"], "description": "Job id"}
 _PIPELINE = {"type": "string", "description": "Pipeline id"}
 TOOLS = {
-    "list_jobs": (tool_list_jobs, "Jobs with schedule and tags, filtered by a name substring.",
+    "list_jobs": (tool_list_jobs, "Jobs with schedule and tags, optionally only the job with this exact name (case-insensitive).",
                   _schema({"name_filter": {"type": "string"}, "limit": _LIMIT})),
     "job_status": (tool_job_status, "A job's latest runs, runs in progress, consecutive failures and "
                    "the time of its last success.", _schema({"job_id": _JOB, "limit": _LIMIT}, ["job_id"])),

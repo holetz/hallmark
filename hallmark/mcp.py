@@ -13,6 +13,7 @@ from . import codelinks, search, store
 PROTOCOL = "2025-06-18"
 MAX_LIMIT = 50
 DEFAULT_LIMIT = 10
+FETCH_CAP = 500
 SERVER = {"name": "hallmark", "version": "0.1.0"}
 
 
@@ -25,6 +26,21 @@ def _limit(args):
 
 def _cut(items, limit):
     return {"items": items[:limit], "total": len(items), "truncated": len(items) > limit}
+
+
+def collect(listing, cap=FETCH_CAP):
+    """Read a `Pages` listing into a list; the flag is true when the cap or the page cap cut it."""
+    items = []
+    for item in listing:
+        if len(items) == cap:
+            return items, True
+        items.append(item)
+    return items, listing.truncated
+
+
+def flag(result, truncated):
+    """`result` (a `_cut` dict), marked truncated when `truncated` or when it already was."""
+    return {**result, "truncated": result["truncated"] or bool(truncated)}
 
 
 def _text(args, key):
