@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-leak-gate.sh: prove the hooks and the generic scan in a throwaway repository.
-# The denylist is a temp file with a dummy term; the real one is never read.
+# The hooks run the generic patterns only; no denylist is read.
 # Sample secrets are assembled at run time so this file itself matches no pattern.
 set -Euo pipefail
 
@@ -16,9 +16,6 @@ check() { # check <label> <expected-exit: zero|nonzero> <actual-exit>
   fi
 }
 
-DENY="$TMP/denylist.txt"
-echo "dummyforbiddenterm" >"$DENY"
-export QUENCHING_DENYLIST_FILE="$DENY"
 cpf="123.456.789-""09"
 
 REPO="$TMP/repo"
@@ -38,10 +35,11 @@ git -C "$REPO" commit -q -m "leaky" 2>/dev/null; check "pre-commit refuses a sta
 git -C "$REPO" rm -q -f --cached b.txt; rm "$REPO/b.txt"
 ( cd "$REPO" && bash "$HERE/leak-generic.sh" ) >/dev/null 2>&1; check "leak-generic accepts a clean tree" zero $?
 
-# missing denylist fails closed
+# no denylist is needed
 echo "more" >>"$REPO/a.txt"; git -C "$REPO" add a.txt
 QUENCHING_DENYLIST_FILE="$TMP/absent.txt" git -C "$REPO" commit -q -m "no denylist" 2>/dev/null
-check "pre-commit fails closed without the denylist" nonzero $?
+check "pre-commit works without a denylist" zero $?
+echo "again" >>"$REPO/a.txt"; git -C "$REPO" add a.txt
 
 # missing cq fails closed (PATH without cq)
 mkdir "$TMP/bin"; for t in bash git env dirname; do ln -s "$(command -v $t)" "$TMP/bin/$t"; done

@@ -4,7 +4,7 @@ hallmark is public and is built next to an adopter's real Databricks environment
 
 ## Install the hooks
 
-The hooks live in `scripts/githooks/` and call `cq security leak` from the [quenching](https://github.com/holetz/quenching) plugin. Nothing is vendored here. They fail closed: without `cq` on the PATH, or without the private denylist, a commit or push is refused.
+The hooks live in `scripts/githooks/` and call `cq security leak` from the [quenching](https://github.com/holetz/quenching) plugin. Nothing is vendored here. They run the generic patterns only and fail closed: without `cq` on the PATH, a commit or push is refused.
 
 ```bash
 git config core.hooksPath scripts/githooks
@@ -15,9 +15,9 @@ Nothing in the repository runs this for you; it changes your own clone's git con
 - `pre-commit` checks the staged content and the configured author email.
 - `pre-push` checks the added lines, messages, author and committer emails of every commit being pushed.
 
-## The private denylist
+## No private denylist
 
-The organization-specific terms live outside the repository, at `~/.config/quenching/denylist.txt` (or the file named by `$QUENCHING_DENYLIST_FILE`): one case-insensitive regex per line. Never copy it into the repository, a log, an issue or a commit message. A finding is fixed by removing the content, never by weakening a pattern.
+There is no list of organization-specific terms, in the repository or next to it: such a list would itself be the trace it is meant to prevent. It was retired on 2026-10-27. Keeping those terms out is a review duty on every change. A finding of the generic patterns is fixed by removing the content, never by weakening a pattern.
 
 ## The repository gate
 
@@ -29,4 +29,4 @@ It checks shell syntax and scans the tracked files for the generic patterns (Bra
 
 ## CI
 
-Pull requests run the same gate plus gitleaks over the history (`.github/workflows/ci.yml`). CI has no `cq` and no denylist, so it covers the generic patterns only; the private terms are the hooks' job, which is why installing them matters. Every action is pinned by commit SHA.
+Pull requests run the same gate plus gitleaks over the history (`.github/workflows/ci.yml`). CI has no `cq`; it covers the same generic patterns the hooks run locally, which is why installing them still matters. Every action is pinned by commit SHA.
