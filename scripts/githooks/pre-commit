@@ -8,4 +8,5 @@ if ! command -v cq >/dev/null 2>&1; then
   echo "pre-commit: 'cq' (quenching plugin) not on PATH; refusing. See CONTRIBUTING.md." >&2
   exit 1
 fi
-exec cq security leak --staged --root "$ROOT"
+# Generic patterns only: there is no private denylist (retired on 2026-10-27; see CONTRIBUTING.md).
+exec cq security leak --staged --generic-only --root "$ROOT"
